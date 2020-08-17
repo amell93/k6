@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/mailru/easyjson"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/guregu/null.v3"
@@ -59,7 +60,7 @@ func BenchmarkAggregateHTTP(b *testing.B) {
 		AggregationCalcInterval: types.NullDurationFrom(time.Millisecond * 200),
 		AggregationPeriod:       types.NullDurationFrom(time.Millisecond * 200),
 	})
-	collector, err := New(config, script, options, []lib.ExecutionStep{}, "1.0")
+	collector, err := New(logrus.StandardLogger(), config, script, options, []lib.ExecutionStep{}, "1.0")
 	require.NoError(b, err)
 	now := time.Now()
 	collector.referenceID = "something"
@@ -321,7 +322,7 @@ func BenchmarkHTTPPush(b *testing.B) {
 		AggregationCalcInterval: types.NullDurationFrom(time.Millisecond * 200),
 		AggregationPeriod:       types.NullDurationFrom(time.Millisecond * 200),
 	})
-	collector, err := New(config, script, options, []lib.ExecutionStep{}, "1.0")
+	collector, err := New(logrus.StandardLogger(), config, script, options, []lib.ExecutionStep{}, "1.0")
 	require.NoError(b, err)
 	collector.referenceID = "fake"
 

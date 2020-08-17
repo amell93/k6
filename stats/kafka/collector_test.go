@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/Shopify/sarama"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/guregu/null.v3"
 
@@ -45,7 +46,7 @@ func TestRun(t *testing.T) {
 		Topic:   null.NewString("my_topic", false),
 	}
 	config := NewConfig().Apply(cfg)
-	c, err := New(config)
+	c, err := New(logrus.StandardLogger(), config)
 
 	assert.Nil(t, err)
 
