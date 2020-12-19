@@ -51,11 +51,13 @@ var (
 )
 
 // A Compiler compiles JavaScript source code (ES5.1 or ES6) into a goja.Program
-type Compiler struct{}
+type Compiler struct {
+	logger logrus.FieldLogger
+}
 
 // New returns a new Compiler
-func New() *Compiler {
-	return &Compiler{}
+func New(logger logrus.FieldLogger) *Compiler {
+	return &Compiler{logger: logger}
 }
 
 // Transform the given code into ES5
@@ -65,10 +67,10 @@ func (c *Compiler) Transform(src, filename string) (code string, srcmap *SourceM
 		return
 	}
 
-	return b.Transform(src, filename)
+	return b.Transform(c.logger, src, filename)
 }
 
-// Compile the program in the given CompatibilityMode, optionally running pre and post code.
+// Compile the program in the given CompatibilityMode, wrapping it between pre and post code
 func (c *Compiler) Compile(src, filename, pre, post string,
 	strict bool, compatMode lib.CompatibilityMode) (*goja.Program, string, error) {
 	code := pre + src + post
@@ -79,7 +81,8 @@ func (c *Compiler) Compile(src, filename, pre, post string,
 			if err != nil {
 				return nil, code, err
 			}
-			return c.Compile(code, filename, pre, post, strict, compatMode)
+			// the compatibility mode "decreases" here as we shouldn't transform twice
+			return c.Compile(code, filename, pre, post, strict, lib.CompatibilityModeBase)
 		}
 		return nil, code, err
 	}
@@ -120,7 +123,7 @@ func newBabel() (*babel, error) {
 
 // Transform the given code into ES5, while synchronizing to ensure only a single
 // bundle instance / Goja VM is in use at a time.
-func (b *babel) Transform(src, filename string) (string, *SourceMap, error) {
+func (b *babel) Transform(logger logrus.FieldLogger, src, filename string) (string, *SourceMap, error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
 	opts := make(map[string]interface{})
@@ -134,7 +137,7 @@ func (b *babel) Transform(src, filename string) (string, *SourceMap, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	logrus.WithField("t", time.Since(startTime)).Debug("Babel: Transformed")
+	logger.WithField("t", time.Since(startTime)).Debug("Babel: Transformed")
 
 	vO := v.ToObject(b.vm)
 	var code string

@@ -252,9 +252,14 @@ func compileRegexp(patternStr, flags string) (p *regexpPattern, err error) {
 		}
 		wrapper = (*regexpWrapper)(pattern)
 	} else {
+		if _, incompat := err1.(parser.RegexpErrorIncompatible); !incompat {
+			err = err1
+			return
+		}
 		wrapper2, err = compileRegexp2(patternStr, multiline, ignoreCase)
 		if err != nil {
-			err = fmt.Errorf("Invalid regular expression (regexp2): %s (%v)", patternStr, err1)
+			err = fmt.Errorf("Invalid regular expression (regexp2): %s (%v)", patternStr, err)
+			return
 		}
 	}
 
@@ -655,7 +660,7 @@ func (r *Runtime) getGlobalRegexpMatches(rxObj *Object, s valueString) []Value {
 		a = append(a, res)
 		matchStr := nilSafe(r.toObject(res).self.getIdx(valueInt(0), nil)).toString()
 		if matchStr.length() == 0 {
-			thisIndex := toInt(nilSafe(rxObj.self.getStr("lastIndex", nil)).ToInteger())
+			thisIndex := toIntStrict(nilSafe(rxObj.self.getStr("lastIndex", nil)).ToInteger())
 			rxObj.self.setOwnStr("lastIndex", valueInt(advanceStringIndex(s, thisIndex, fullUnicode)), true)
 		}
 	}
@@ -713,26 +718,16 @@ func (r *Runtime) regexpproto_stdMatcher(call FunctionCall) Value {
 		return r.regexpproto_stdMatcherGeneric(thisObj, s)
 	}
 	if rx.pattern.global {
-		rx.setOwnStr("lastIndex", intToValue(0), true)
-		var a []Value
-		var previousLastIndex int64
-		for {
-			match, result := rx.execRegexp(s)
-			if !match {
-				break
-			}
-			thisIndex := rx.getStr("lastIndex", nil).ToInteger()
-			if thisIndex == previousLastIndex {
-				previousLastIndex = int64(advanceStringIndex(s, toInt(previousLastIndex), rx.pattern.unicode))
-				rx.setOwnStr("lastIndex", intToValue(previousLastIndex), true)
-			} else {
-				previousLastIndex = thisIndex
-			}
-			a = append(a, s.substring(result[0], result[1]))
-		}
-		if len(a) == 0 {
+		res := rx.pattern.findAllSubmatchIndex(s, 0, -1, rx.pattern.sticky)
+		if len(res) == 0 {
+			rx.setOwnStr("lastIndex", intToValue(0), true)
 			return _null
 		}
+		a := make([]Value, 0, len(res))
+		for _, result := range res {
+			a = append(a, s.substring(result[0], result[1]))
+		}
+		rx.setOwnStr("lastIndex", intToValue(int64(res[len(res)-1][1])), true)
 		return r.newArrayValues(a)
 	} else {
 		return rx.exec(s)
@@ -862,21 +857,24 @@ func advanceStringIndex(s valueString, pos int, unicode bool) int {
 
 func (r *Runtime) regexpproto_stdSplitter(call FunctionCall) Value {
 	rxObj := r.toObject(call.This)
-	c := r.speciesConstructor(rxObj, r.global.RegExp)
-	flags := nilSafe(rxObj.self.getStr("flags", nil)).toString()
-	flagsStr := flags.String()
-
-	// Add 'y' flag if missing
-	if !strings.Contains(flagsStr, "y") {
-		flags = newStringValue(flagsStr + "y")
-	}
-	splitter := c([]Value{rxObj, flags}, nil)
-
 	s := call.Argument(0).toString()
 	limitValue := call.Argument(1)
-	search := r.checkStdRegexp(splitter)
-	if search == nil {
-		return r.regexpproto_stdSplitterGeneric(splitter, s, limitValue, strings.Contains(flagsStr, "u"))
+	var splitter *Object
+	search := r.checkStdRegexp(rxObj)
+	c := r.speciesConstructorObj(rxObj, r.global.RegExp)
+	if search == nil || c != r.global.RegExp {
+		flags := nilSafe(rxObj.self.getStr("flags", nil)).toString()
+		flagsStr := flags.String()
+
+		// Add 'y' flag if missing
+		if !strings.Contains(flagsStr, "y") {
+			flags = flags.concat(asciiString("y"))
+		}
+		splitter = r.toConstructor(c)([]Value{rxObj, flags}, nil)
+		search = r.checkStdRegexp(splitter)
+		if search == nil {
+			return r.regexpproto_stdSplitterGeneric(splitter, s, limitValue, strings.Contains(flagsStr, "u"))
+		}
 	}
 
 	limit := -1
@@ -972,7 +970,7 @@ func (r *Runtime) regexpproto_stdReplacerGeneric(rxObj *Object, s, replaceStr va
 		nCaptures := max(toLength(obj.self.getStr("length", nil))-1, 0)
 		matched := nilSafe(obj.self.getIdx(valueInt(0), nil)).toString()
 		matchLength := matched.length()
-		position := toInt(max(min(nilSafe(obj.self.getStr("index", nil)).ToInteger(), int64(lengthS)), 0))
+		position := toIntStrict(max(min(nilSafe(obj.self.getStr("index", nil)).ToInteger(), int64(lengthS)), 0))
 		var captures []Value
 		if rcall != nil {
 			captures = make([]Value, 0, nCaptures+3)
@@ -1090,7 +1088,7 @@ func (r *Runtime) regexpproto_stdReplacer(call FunctionCall) Value {
 	} else {
 		index = rx.getLastIndex()
 	}
-	found := rx.pattern.findAllSubmatchIndex(s, toInt(index), find, rx.pattern.sticky)
+	found := rx.pattern.findAllSubmatchIndex(s, toIntStrict(index), find, rx.pattern.sticky)
 	if len(found) > 0 {
 		if !rx.updateLastIndex(index, found[0], found[len(found)-1]) {
 			found = nil

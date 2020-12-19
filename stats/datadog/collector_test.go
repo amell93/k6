@@ -24,24 +24,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/guregu/null.v3"
 
+	"github.com/loadimpact/k6/lib/types"
 	"github.com/loadimpact/k6/stats"
 	"github.com/loadimpact/k6/stats/statsd/common"
 	"github.com/loadimpact/k6/stats/statsd/common/testutil"
 )
 
 func TestCollector(t *testing.T) {
-	var tagMap = stats.TagSet{"tag1": true, "tag2": true}
-	var handler = tagHandler(tagMap)
-	testutil.BaseTest(t, func(config common.Config) (*common.Collector, error) {
-		return New(NewConfig().Apply(Config{
+	tagMap := stats.TagSet{"tag1": true, "tag2": true}
+	handler := tagHandler(tagMap)
+	testutil.BaseTest(t, func(
+		logger logrus.FieldLogger, addr, namespace null.String, bufferSize null.Int,
+		pushInterval types.NullDuration) (*common.Collector, error) {
+		return New(logger, Config{
+			Addr:         addr,
+			Namespace:    namespace,
+			BufferSize:   bufferSize,
+			PushInterval: pushInterval,
 			TagBlacklist: tagMap,
-			Config:       config,
-		}))
+		})
 	}, func(t *testing.T, containers []stats.SampleContainer, expectedOutput, output string) {
-		var outputLines = strings.Split(output, "\n")
-		var expectedOutputLines = strings.Split(expectedOutput, "\n")
+		outputLines := strings.Split(output, "\n")
+		expectedOutputLines := strings.Split(expectedOutput, "\n")
 		for i, container := range containers {
 			for j, sample := range container.GetSamples() {
 				var (

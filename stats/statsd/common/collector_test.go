@@ -26,40 +26,66 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/guregu/null.v3"
 
+	"github.com/loadimpact/k6/lib/testutils"
+	"github.com/loadimpact/k6/lib/types"
 	"github.com/loadimpact/k6/stats"
 )
 
+type config struct {
+	addr, namespace null.String
+	bufferSize      null.Int
+	pushInterval    types.NullDuration
+}
+
+func (c config) GetAddr() null.String {
+	return c.addr
+}
+
+func (c config) GetBufferSize() null.Int {
+	return c.bufferSize
+}
+
+func (c config) GetNamespace() null.String {
+	return c.namespace
+}
+
+func (c config) GetPushInterval() types.NullDuration {
+	return c.pushInterval
+}
+
 func TestInitWithoutAddressErrors(t *testing.T) {
-	var c = &Collector{
-		Config: Config{},
+	c := &Collector{
+		Config: config{},
 		Type:   "testtype",
+		Logger: testutils.NewLogger(t),
 	}
 	err := c.Init()
 	require.Error(t, err)
 }
 
 func TestInitWithBogusAddressErrors(t *testing.T) {
-	var c = &Collector{
-		Config: Config{
-			Addr: null.StringFrom("localhost:90000"),
+	c := &Collector{
+		Config: config{
+			addr: null.StringFrom("localhost:90000"),
 		},
-		Type: "testtype",
+		Type:   "testtype",
+		Logger: testutils.NewLogger(t),
 	}
 	err := c.Init()
 	require.Error(t, err)
 }
 
 func TestLinkReturnAddress(t *testing.T) {
-	var bogusValue = "bogus value"
-	var c = &Collector{
-		Config: Config{
-			Addr: null.StringFrom(bogusValue),
+	bogusValue := "bogus value"
+	c := &Collector{
+		Config: config{
+			addr: null.StringFrom(bogusValue),
 		},
 	}
 	require.Equal(t, bogusValue, c.Link())
 }
 
 func TestGetRequiredSystemTags(t *testing.T) {
-	var c = &Collector{}
+	c := &Collector{}
 	require.Equal(t, stats.SystemTagSet(0), c.GetRequiredSystemTags())
 }

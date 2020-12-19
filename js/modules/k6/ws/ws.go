@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -36,10 +37,15 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/loadimpact/k6/js/common"
+	"github.com/loadimpact/k6/js/internal/modules"
 	"github.com/loadimpact/k6/lib"
 	"github.com/loadimpact/k6/lib/metrics"
 	"github.com/loadimpact/k6/stats"
 )
+
+func init() {
+	modules.Register("k6/ws", New())
+}
 
 // ErrWSInInitContext is returned when websockets are using in the init context
 var ErrWSInInitContext = common.NewInitContextError("using websockets in the init context is not supported")
@@ -380,12 +386,21 @@ func (s *Socket) trackPong(pingID string) {
 	})
 }
 
-func (s *Socket) SetTimeout(fn goja.Callable, timeoutMs int) {
+// SetTimeout executes the provided function inside the socket's event loop after at least the provided
+// timeout, which is in ms, has elapsed
+func (s *Socket) SetTimeout(fn goja.Callable, timeoutMs float64) error {
 	// Starts a goroutine, blocks once on the timeout and pushes the callable
-	// back to the main loop through the scheduled channel
+	// back to the main loop through the scheduled channel.
+	//
+	// Intentionally not using the generic GetDurationValue() helper, since this
+	// API is meant to use ms, similar to the original SetTimeout() JS API.
+	d := time.Duration(timeoutMs * float64(time.Millisecond))
+	if d <= 0 {
+		return fmt.Errorf("setTimeout requires a >0 timeout parameter, received %.2f", timeoutMs)
+	}
 	go func() {
 		select {
-		case <-time.After(time.Duration(timeoutMs) * time.Millisecond):
+		case <-time.After(d):
 			select {
 			case s.scheduled <- fn:
 			case <-s.done:
@@ -396,11 +411,22 @@ func (s *Socket) SetTimeout(fn goja.Callable, timeoutMs int) {
 			return
 		}
 	}()
+
+	return nil
 }
 
-func (s *Socket) SetInterval(fn goja.Callable, intervalMs int) {
+// SetInterval executes the provided function inside the socket's event loop each interval time, which is
+// in ms
+func (s *Socket) SetInterval(fn goja.Callable, intervalMs float64) error {
 	// Starts a goroutine, blocks forever on the ticker and pushes the callable
-	// back to the main loop through the scheduled channel
+	// back to the main loop through the scheduled channel.
+	//
+	// Intentionally not using the generic GetDurationValue() helper, since this
+	// API is meant to use ms, similar to the original SetInterval() JS API.
+	d := time.Duration(intervalMs * float64(time.Millisecond))
+	if d <= 0 {
+		return fmt.Errorf("setInterval requires a >0 timeout parameter, received %.2f", intervalMs)
+	}
 	go func() {
 		ticker := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
 		defer ticker.Stop()
@@ -419,6 +445,8 @@ func (s *Socket) SetInterval(fn goja.Callable, intervalMs int) {
 			}
 		}
 	}()
+
+	return nil
 }
 
 func (s *Socket) Close(args ...goja.Value) {

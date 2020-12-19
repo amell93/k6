@@ -21,6 +21,24 @@ Features
  * Sourcemaps.
  * Some ES6 functionality, still work in progress, see https://github.com/dop251/goja/milestone/1?closed=1
  
+Known incompatibilities and caveats
+-----------------------------------
+
+### WeakMap
+WeakMap maintains "hard" references to its values. This means if a value references a key in a WeakMap or a WeakMap
+itself, it will not be garbage-collected until the WeakMap becomes unreferenced. To illustrate this:
+
+```go
+var m = new WeakMap();
+var key = {};
+m.set(key, {key: key});
+// or m.set(key, key);
+key = undefined; // The value will NOT become garbage-collectable at this point
+m = undefined; // But it will at this point.
+```
+
+Note, this does not have any effect on the application logic, but causes a higher-than-expected memory usage.
+
 FAQ
 ---
 
@@ -90,6 +108,8 @@ Current Status
 Basic Example
 -------------
 
+Run JavaScript and get the result value.
+
 ```go
 vm := goja.New()
 v, err := vm.RunString("2 + 2")
@@ -103,15 +123,70 @@ if num := v.Export().(int64); num != 4 {
 
 Passing Values to JS
 --------------------
-
 Any Go value can be passed to JS using Runtime.ToValue() method. See the method's [documentation](https://godoc.org/github.com/dop251/goja#Runtime.ToValue) for more details.
 
 Exporting Values from JS
 ------------------------
-
 A JS value can be exported into its default Go representation using Value.Export() method.
 
-Alternatively it can be exported into a specific Go variable using Runtime.ExportTo() method.
+Alternatively it can be exported into a specific Go variable using [Runtime.ExportTo()](https://godoc.org/github.com/dop251/goja#Runtime.ExportTo) method.
+
+Within a single export operation the same Object will be represented by the same Go value (either the same map, slice or
+a pointer to the same struct). This includes circular objects and makes it possible to export them.
+
+Calling JS functions from Go
+----------------------------
+There are 2 approaches:
+
+- Using [AssertFunction()](https://godoc.org/github.com/dop251/goja#AssertFunction):
+```go
+vm := New()
+_, err := vm.RunString(`
+function sum(a, b) {
+    return a+b;
+}
+`)
+if err != nil {
+    panic(err)
+}
+sum, ok := AssertFunction(vm.Get("sum"))
+if !ok {
+    panic("Not a function")
+}
+
+res, err := sum(Undefined(), vm.ToValue(40), vm.ToValue(2))
+if err != nil {
+    panic(err)
+}
+fmt.Println(res)
+// Output: 42
+```
+- Using [Runtime.ExportTo()](https://godoc.org/github.com/dop251/goja#Runtime.ExportTo):
+```go
+const SCRIPT = `
+function f(param) {
+    return +param + 2;
+}
+`
+
+vm := New()
+_, err := vm.RunString(SCRIPT)
+if err != nil {
+    panic(err)
+}
+
+var fn func(string) string
+err = vm.ExportTo(vm.Get("f"), &fn)
+if err != nil {
+    panic(err)
+}
+
+fmt.Println(fn("40")) // note, _this_ value in the function will be undefined.
+// Output: 42
+```
+
+The first one is more low level and allows specifying _this_ value, whereas the second one makes the function look like
+a normal Go function.
 
 Mapping struct field and method names
 -------------------------------------

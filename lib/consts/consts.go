@@ -28,7 +28,7 @@ import (
 )
 
 // Version contains the current semantic version of k6.
-const Version = "0.27.1"
+const Version = "0.29.0"
 
 // VersionDetails can be set externally as part of the build process
 var VersionDetails = "" // nolint:gochecknoglobals
@@ -48,13 +48,15 @@ func FullVersion() string {
 	return fmt.Sprintf("%s (dev build, %s)", Version, goVersionArch)
 }
 
-// Banner contains the ASCII-art banner with the k6 logo and stylized website URL
-// TODO: make these into methods, only the version needs to be a variable
-//nolint:gochecknoglobals
-var Banner = strings.Join([]string{
-	`          /\      |‾‾|  /‾‾/  /‾/   `,
-	`     /\  /  \     |  |_/  /  / /    `,
-	`    /  \/    \    |      |  /  ‾‾\  `,
-	`   /          \   |  |‾\  \ | (_) | `,
-	`  / __________ \  |__|  \__\ \___/ .io`,
-}, "\n")
+// Banner returns the ASCII-art banner with the k6 logo and stylized website URL
+func Banner() string {
+	banner := strings.Join([]string{
+		`          /\      |‾‾| /‾‾/   /‾‾/   `,
+		`     /\  /  \     |  |/  /   /  /    `,
+		`    /  \/    \    |     (   /   ‾‾\  `,
+		`   /          \   |  |\  \ |  (‾)  | `,
+		`  / __________ \  |__| \__\ \_____/ .io`,
+	}, "\n")
+
+	return banner
+}
